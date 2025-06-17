@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片字节重排加密工具</title>
+    <title>jmjm.caning.cc</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -62,6 +62,10 @@
         .btn-danger:hover {
             background-color: #c0392b;
         }
+        .btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
         .image-preview-container {
             display: flex;
             flex-wrap: wrap;
@@ -75,7 +79,8 @@
             border-radius: 5px;
             text-align: center;
             background-color: #f9f9f9;
-            width: 300px;
+            width: 100%;
+            max-width: 300px;
         }
         .preview-title {
             font-weight: bold;
@@ -97,10 +102,12 @@
             display: flex;
             gap: 10px;
             justify-content: center;
+            flex-wrap: wrap;
         }
         .tabs {
             display: flex;
             margin-bottom: 20px;
+            overflow-x: auto;
         }
         .tab {
             padding: 10px 20px;
@@ -108,6 +115,7 @@
             cursor: pointer;
             border-radius: 5px 5px 0 0;
             margin-right: 5px;
+            white-space: nowrap;
         }
         .tab.active {
             background-color: #3498db;
@@ -126,13 +134,80 @@
         .key-input input {
             padding: 8px;
             width: 200px;
+            max-width: 100%;
             margin: 0 10px;
         }
         .status-message {
             text-align: center;
             margin: 10px 0;
-            color: #e74c3c;
             font-weight: bold;
+        }
+        .processing {
+            color: #3498db;
+        }
+        .error {
+            color: #e74c3c;
+        }
+        .success {
+            color: #2ecc71;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #3498db;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .mobile-download-tip {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+            color: #3498db;
+            font-weight: bold;
+        }
+        .fullscreen-preview {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .fullscreen-preview img {
+            max-width: 90%;
+            max-height: 90%;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            .section {
+                padding: 15px;
+            }
+            .upload-area {
+                padding: 20px;
+            }
+            .btn {
+                padding: 8px 15px;
+                font-size: 14px;
+            }
+            .preview-box {
+                width: 100%;
+            }
+            .mobile-download-tip {
+                display: block;
+            }
         }
     </style>
 </head>
@@ -167,6 +242,11 @@
                     </div>
                 </div>
                 
+                <div id="encrypt-status" class="status-message"></div>
+                <div id="encrypt-progress" class="progress-container">
+                    <div class="progress-bar"></div>
+                </div>
+                
                 <div class="controls">
                     <button id="encrypt-btn" class="btn">加密图片</button>
                     <button id="reset-encrypt" class="btn btn-danger">重置</button>
@@ -184,6 +264,7 @@
                             <img id="encrypted-image" class="image-preview" alt="加密后的图片">
                         </div>
                     </div>
+                    <div class="mobile-download-tip">长按图片选择"保存图片"</div>
                     <div class="controls">
                         <button id="download-encrypted" class="btn">下载加密图片</button>
                     </div>
@@ -213,12 +294,15 @@
                     </div>
                 </div>
                 
+                <div id="decrypt-status" class="status-message"></div>
+                <div id="decrypt-progress" class="progress-container">
+                    <div class="progress-bar"></div>
+                </div>
+                
                 <div class="controls">
                     <button id="decrypt-btn" class="btn">解密图片</button>
                     <button id="reset-decrypt" class="btn btn-danger">重置</button>
                 </div>
-                
-                <div id="decrypt-status" class="status-message"></div>
                 
                 <div id="decrypt-result" class="result-container">
                     <h3>解密结果</h3>
@@ -232,6 +316,7 @@
                             <img id="decrypted-image" class="image-preview" alt="解密后的图片">
                         </div>
                     </div>
+                    <div class="mobile-download-tip">长按图片选择"保存图片"</div>
                     <div class="controls">
                         <button id="download-decrypted" class="btn">下载解密图片</button>
                     </div>
@@ -246,10 +331,21 @@
         let encryptedImageData = null;
         let encryptedImageForDecrypt = null;
         let decryptedImageData = null;
-        let encryptionIndices = null; // 存储加密时的排列顺序
+        let encryptionIndices = null;
+        let isProcessing = false;
+        
+        // 检测移动设备
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
         
         // 切换标签页
         function switchTab(tabName) {
+            if (isProcessing) {
+                alert('请等待当前操作完成后再切换标签页');
+                return;
+            }
+            
             document.querySelectorAll('.tab').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -264,6 +360,40 @@
                 document.querySelector('.tab:nth-child(2)').classList.add('active');
                 document.getElementById('decrypt-tab').classList.add('active');
             }
+        }
+        
+        // 显示状态信息
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = 'status-message ' + type;
+        }
+        
+        // 禁用/启用按钮
+        function disableButtons(disabled) {
+            document.getElementById('encrypt-btn').disabled = disabled;
+            document.getElementById('decrypt-btn').disabled = disabled;
+            document.getElementById('reset-encrypt').disabled = disabled;
+            document.getElementById('reset-decrypt').disabled = disabled;
+            document.getElementById('download-encrypted').disabled = disabled;
+            document.getElementById('download-decrypted').disabled = disabled;
+        }
+        
+        // 显示全屏图片预览
+        function showFullscreenPreview(imageUrl) {
+            const preview = document.createElement('div');
+            preview.className = 'fullscreen-preview';
+            
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            
+            preview.appendChild(img);
+            preview.onclick = function() {
+                document.body.removeChild(preview);
+            };
+            
+            document.body.appendChild(preview);
+            return preview;
         }
         
         // 初始化
@@ -333,6 +463,11 @@
         
         // 处理图片上传
         function handleImageUpload(input, previewId) {
+            if (isProcessing) {
+                alert('请等待当前操作完成后再上传新图片');
+                return;
+            }
+            
             const file = input.files[0];
             if (!file) return;
             
@@ -363,130 +498,221 @@
         }
         
         // 字节重排加密（使用密钥）
-        function shuffleBytesEncrypt(imageData, key) {
-            const data = new Uint8ClampedArray(imageData.data);
-            
-            // 使用密钥生成种子
-            let seed = 0;
-            for (let i = 0; i < key.length; i++) {
-                seed = (seed + key.charCodeAt(i)) % 2147483647;
-            }
-            
-            // 记录原始位置
-            const indices = Array.from({length: data.length}, (_, i) => i);
-            
-            // 使用密钥作为种子的伪随机数生成器
-            function random() {
-                seed = (seed * 16807) % 2147483647;
-                return seed / 2147483647;
-            }
-            
-            // Fisher-Yates 洗牌算法
-            for (let i = indices.length - 1; i > 0; i--) {
-                const j = Math.floor(random() * (i + 1));
-                [indices[i], indices[j]] = [indices[j], indices[i]];
-            }
-            
-            // 应用排列
-            const shuffledData = new Uint8ClampedArray(data.length);
-            for (let i = 0; i < data.length; i++) {
-                shuffledData[indices[i]] = data[i];
-            }
-            
-            // 存储排列顺序用于解密
-            encryptionIndices = indices;
-            
-            return new ImageData(shuffledData, imageData.width, imageData.height);
+        function shuffleBytesEncrypt(imageData, key, updateProgress) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const data = new Uint8ClampedArray(imageData.data);
+                    
+                    // 使用密钥生成种子
+                    let seed = 0;
+                    for (let i = 0; i < key.length; i++) {
+                        seed = (seed + key.charCodeAt(i)) % 2147483647;
+                    }
+                    
+                    // 记录原始位置
+                    const indices = Array.from({length: data.length}, (_, i) => i);
+                    
+                    // 使用密钥作为种子的伪随机数生成器
+                    function random() {
+                        seed = (seed * 16807) % 2147483647;
+                        return seed / 2147483647;
+                    }
+                    
+                    // 分块处理以避免UI冻结
+                    const chunkSize = 10000;
+                    let processed = 0;
+                    const total = indices.length;
+                    
+                    function processChunk() {
+                        const end = Math.min(processed + chunkSize, total - 1);
+                        
+                        for (let i = processed; i < end; i++) {
+                            const j = Math.floor(random() * (i + 1));
+                            [indices[i], indices[j]] = [indices[j], indices[i]];
+                        }
+                        
+                        processed = end;
+                        
+                        // 更新进度
+                        if (updateProgress) {
+                            const progress = Math.floor((processed / total) * 100);
+                            updateProgress(progress);
+                        }
+                        
+                        if (processed < total - 1) {
+                            setTimeout(processChunk, 0);
+                        } else {
+                            // 应用排列
+                            const shuffledData = new Uint8ClampedArray(data.length);
+                            for (let i = 0; i < data.length; i++) {
+                                shuffledData[indices[i]] = data[i];
+                            }
+                            
+                            // 存储排列顺序用于解密
+                            encryptionIndices = indices;
+                            
+                            resolve(new ImageData(shuffledData, imageData.width, imageData.height));
+                        }
+                    }
+                    
+                    processChunk();
+                }, 0);
+            });
         }
         
         // 字节重排解密
-        function shuffleBytesDecrypt(imageData, key) {
-            const data = new Uint8ClampedArray(imageData.data);
-            
-            // 使用密钥生成种子（必须与加密时相同）
-            let seed = 0;
-            for (let i = 0; i < key.length; i++) {
-                seed = (seed + key.charCodeAt(i)) % 2147483647;
-            }
-            
-            // 重新生成排列
-            const indices = Array.from({length: data.length}, (_, i) => i);
-            
-            function random() {
-                seed = (seed * 16807) % 2147483647;
-                return seed / 2147483647;
-            }
-            
-            for (let i = indices.length - 1; i > 0; i--) {
-                const j = Math.floor(random() * (i + 1));
-                [indices[i], indices[j]] = [indices[j], indices[i]];
-            }
-            
-            // 创建反向排列
-            const reverseIndices = new Array(indices.length);
-            for (let i = 0; i < indices.length; i++) {
-                reverseIndices[indices[i]] = i;
-            }
-            
-            // 应用反向排列
-            const originalData = new Uint8ClampedArray(data.length);
-            for (let i = 0; i < reverseIndices.length; i++) {
-                originalData[reverseIndices[i]] = data[i];
-            }
-            
-            return new ImageData(originalData, imageData.width, imageData.height);
+        function shuffleBytesDecrypt(imageData, key, updateProgress) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const data = new Uint8ClampedArray(imageData.data);
+                    
+                    // 使用密钥生成种子（必须与加密时相同）
+                    let seed = 0;
+                    for (let i = 0; i < key.length; i++) {
+                        seed = (seed + key.charCodeAt(i)) % 2147483647;
+                    }
+                    
+                    // 重新生成排列
+                    const indices = Array.from({length: data.length}, (_, i) => i);
+                    
+                    function random() {
+                        seed = (seed * 16807) % 2147483647;
+                        return seed / 2147483647;
+                    }
+                    
+                    // 分块处理以避免UI冻结
+                    const chunkSize = 10000;
+                    let processed = 0;
+                    const total = indices.length;
+                    
+                    function processChunk() {
+                        const end = Math.min(processed + chunkSize, total - 1);
+                        
+                        for (let i = processed; i < end; i++) {
+                            const j = Math.floor(random() * (i + 1));
+                            [indices[i], indices[j]] = [indices[j], indices[i]];
+                        }
+                        
+                        processed = end;
+                        
+                        // 更新进度
+                        if (updateProgress) {
+                            const progress = Math.floor((processed / total) * 100);
+                            updateProgress(progress);
+                        }
+                        
+                        if (processed < total - 1) {
+                            setTimeout(processChunk, 0);
+                        } else {
+                            // 创建反向排列
+                            const reverseIndices = new Array(indices.length);
+                            for (let i = 0; i < indices.length; i++) {
+                                reverseIndices[indices[i]] = i;
+                            }
+                            
+                            // 应用反向排列
+                            const originalData = new Uint8ClampedArray(data.length);
+                            for (let i = 0; i < reverseIndices.length; i++) {
+                                originalData[reverseIndices[i]] = data[i];
+                            }
+                            
+                            resolve(new ImageData(originalData, imageData.width, imageData.height));
+                        }
+                    }
+                    
+                    processChunk();
+                }, 0);
+            });
         }
         
         // 加密图片
-        function encryptImage() {
+        async function encryptImage() {
+            if (isProcessing) {
+                alert('请等待当前操作完成');
+                return;
+            }
+            
             if (!originalImageData) {
-                alert('请先上传图片');
+                showStatus('encrypt-status', '请先上传图片', 'error');
                 return;
             }
             
             const key = document.getElementById('encrypt-key').value;
             if (!key) {
-                alert('请输入加密密钥');
+                showStatus('encrypt-status', '请输入加密密钥', 'error');
                 return;
             }
             
-            encryptedImageData = shuffleBytesEncrypt(originalImageData, key);
-            
-            // 显示加密结果
-            const canvas = document.createElement('canvas');
-            canvas.width = originalImageData.width;
-            canvas.height = originalImageData.height;
-            const ctx = canvas.getContext('2d');
-            
-            // 显示原始图片
-            ctx.putImageData(originalImageData, 0, 0);
-            document.getElementById('original-image-result').src = canvas.toDataURL();
-            
-            // 显示加密图片
-            ctx.putImageData(encryptedImageData, 0, 0);
-            document.getElementById('encrypted-image').src = canvas.toDataURL();
-            
-            document.getElementById('encrypt-result').style.display = 'block';
-            
-            // 存储加密信息到localStorage
-            localStorage.setItem('lastEncryptionKey', key);
+            try {
+                isProcessing = true;
+                disableButtons(true);
+                showStatus('encrypt-status', '加密处理中...', 'processing');
+                document.getElementById('encrypt-progress').style.display = 'block';
+                
+                const progressCallback = (progress) => {
+                    document.getElementById('encrypt-progress').querySelector('.progress-bar').style.width = progress + '%';
+                };
+                
+                encryptedImageData = await shuffleBytesEncrypt(originalImageData, key, progressCallback);
+                
+                // 显示加密结果
+                const canvas = document.createElement('canvas');
+                canvas.width = originalImageData.width;
+                canvas.height = originalImageData.height;
+                const ctx = canvas.getContext('2d');
+                
+                // 显示原始图片
+                ctx.putImageData(originalImageData, 0, 0);
+                document.getElementById('original-image-result').src = canvas.toDataURL();
+                
+                // 显示加密图片
+                ctx.putImageData(encryptedImageData, 0, 0);
+                document.getElementById('encrypted-image').src = canvas.toDataURL();
+                
+                document.getElementById('encrypt-result').style.display = 'block';
+                showStatus('encrypt-status', '加密完成!', 'success');
+                
+                // 存储加密信息到localStorage
+                localStorage.setItem('lastEncryptionKey', key);
+            } catch (e) {
+                showStatus('encrypt-status', '加密失败: ' + e.message, 'error');
+                console.error('加密错误:', e);
+            } finally {
+                isProcessing = false;
+                disableButtons(false);
+                document.getElementById('encrypt-progress').style.display = 'none';
+            }
         }
         
         // 解密图片
-        function decryptImage() {
+        async function decryptImage() {
+            if (isProcessing) {
+                alert('请等待当前操作完成');
+                return;
+            }
+            
             if (!encryptedImageForDecrypt) {
-                alert('请先上传加密图片');
+                showStatus('decrypt-status', '请先上传加密图片', 'error');
                 return;
             }
             
             const key = document.getElementById('decrypt-key').value;
             if (!key) {
-                alert('请输入解密密钥');
+                showStatus('decrypt-status', '请输入解密密钥', 'error');
                 return;
             }
             
             try {
-                decryptedImageData = shuffleBytesDecrypt(encryptedImageForDecrypt, key);
+                isProcessing = true;
+                disableButtons(true);
+                showStatus('decrypt-status', '解密处理中...', 'processing');
+                document.getElementById('decrypt-progress').style.display = 'block';
+                
+                const progressCallback = (progress) => {
+                    document.getElementById('decrypt-progress').querySelector('.progress-bar').style.width = progress + '%';
+                };
+                
+                decryptedImageData = await shuffleBytesDecrypt(encryptedImageForDecrypt, key, progressCallback);
                 
                 // 显示解密结果
                 const canvas = document.createElement('canvas');
@@ -503,17 +729,21 @@
                 document.getElementById('decrypted-image').src = canvas.toDataURL();
                 
                 document.getElementById('decrypt-result').style.display = 'block';
-                document.getElementById('decrypt-status').textContent = '';
+                showStatus('decrypt-status', '解密完成!', 'success');
                 
                 // 检查解密结果是否有效
                 if (isImageEmpty(decryptedImageData)) {
-                    document.getElementById('decrypt-status').textContent = '解密失败，请检查密钥是否正确';
+                    showStatus('decrypt-status', '解密失败，请检查密钥是否正确', 'error');
                     document.getElementById('decrypt-result').style.display = 'none';
                 }
             } catch (e) {
-                document.getElementById('decrypt-status').textContent = '解密失败，请检查密钥是否正确';
+                showStatus('decrypt-status', '解密失败: ' + e.message, 'error');
                 document.getElementById('decrypt-result').style.display = 'none';
                 console.error('解密错误:', e);
+            } finally {
+                isProcessing = false;
+                disableButtons(false);
+                document.getElementById('decrypt-progress').style.display = 'none';
             }
         }
         
@@ -527,7 +757,7 @@
             return true;
         }
         
-        // 下载图片
+        // 下载图片（兼容移动端）
         function downloadImage(imageData, filename) {
             const canvas = document.createElement('canvas');
             canvas.width = imageData.width;
@@ -535,17 +765,50 @@
             const ctx = canvas.getContext('2d');
             ctx.putImageData(imageData, 0, 0);
             
-            const link = document.createElement('a');
-            link.download = filename;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
+            const imageUrl = canvas.toDataURL('image/png');
+            
+            if (isMobileDevice()) {
+                // 移动端处理方案
+                try {
+                    // 尝试使用标准下载方式
+                    const link = document.createElement('a');
+                    link.download = filename;
+                    link.href = imageUrl;
+                    
+                    // 创建一个一次性事件处理
+                    const event = new MouseEvent('click');
+                    link.dispatchEvent(event);
+                    
+                    // 显示提示让用户知道可以长按保存
+                    setTimeout(() => {
+                        const preview = showFullscreenPreview(imageUrl);
+                        alert('如果下载未自动开始，请长按图片选择"保存图片"，然后点击任意位置关闭预览');
+                    }, 500);
+                } catch (e) {
+                    // 如果标准方式失败，显示全屏预览让用户手动保存
+                    const preview = showFullscreenPreview(imageUrl);
+                    alert('请长按图片选择"保存图片"，然后点击任意位置关闭预览');
+                }
+            } else {
+                // 桌面端使用标准下载方式
+                const link = document.createElement('a');
+                link.download = filename;
+                link.href = imageUrl;
+                link.click();
+            }
         }
         
         // 重置加密部分
         function resetEncrypt() {
+            if (isProcessing) {
+                alert('请等待当前操作完成');
+                return;
+            }
+            
             document.getElementById('original-image').style.display = 'none';
             document.getElementById('original-image').src = '';
             document.getElementById('encrypt-result').style.display = 'none';
+            document.getElementById('encrypt-status').textContent = '';
             originalImageData = null;
             encryptedImageData = null;
             document.getElementById('encrypt-input').value = '';
@@ -554,6 +817,11 @@
         
         // 重置解密部分
         function resetDecrypt() {
+            if (isProcessing) {
+                alert('请等待当前操作完成');
+                return;
+            }
+            
             document.getElementById('encrypted-image-decrypt').style.display = 'none';
             document.getElementById('encrypted-image-decrypt').src = '';
             document.getElementById('decrypt-result').style.display = 'none';
@@ -565,4 +833,4 @@
         }
     </script>
 </body>
-                          </html>
+</html>
