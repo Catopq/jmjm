@@ -165,12 +165,24 @@
             width: 0%;
             transition: width 0.3s;
         }
-        .mobile-download-tip {
+        .download-instruction {
             display: none;
             text-align: center;
-            margin: 10px 0;
-            color: #3498db;
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            color: #495057;
+        }
+        .download-instruction.mobile {
+            display: block;
+        }
+        .download-instruction span {
+            display: block;
+            margin-bottom: 5px;
             font-weight: bold;
+            color: #3498db;
         }
         .fullscreen-preview {
             position: fixed;
@@ -187,6 +199,24 @@
         .fullscreen-preview img {
             max-width: 90%;
             max-height: 90%;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin: 15px 0;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+        }
+        .warning-icon {
+            color: #ffc107;
+            font-size: 20px;
+            margin-right: 10px;
+        }
+        .warning-text {
+            color: #856404;
+            font-size: 14px;
         }
         @media (max-width: 768px) {
             .container {
@@ -205,9 +235,6 @@
             .preview-box {
                 width: 100%;
             }
-            .mobile-download-tip {
-                display: block;
-            }
         }
     </style>
 </head>
@@ -224,6 +251,13 @@
         <div id="encrypt-tab" class="tab-content active">
             <div class="section">
                 <h2>加密图片</h2>
+                
+                <div class="warning-box">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="warning-text">
+                        <strong>重要提示：</strong>如果需要分享请勾选发送原图。图片丢帧会导致解密失败。
+                    </div>
+                </div>
                 
                 <div class="key-input">
                     <label for="encrypt-key">加密密钥:</label>
@@ -264,7 +298,10 @@
                             <img id="encrypted-image" class="image-preview" alt="加密后的图片">
                         </div>
                     </div>
-                    <div class="mobile-download-tip">长按图片选择"保存图片"</div>
+                    <div id="encrypt-download-instruction" class="download-instruction">
+                        <span>下载说明</span>
+                        请长按上方图片选择"保存图片"进行下载
+                    </div>
                     <div class="controls">
                         <button id="download-encrypted" class="btn">下载加密图片</button>
                     </div>
@@ -276,6 +313,13 @@
         <div id="decrypt-tab" class="tab-content">
             <div class="section">
                 <h2>解密图片</h2>
+                
+                <div class="warning-box">
+                    <div class="warning-icon">⚠️</div>
+                    <div class="warning-text">
+                        <strong>重要提示：</strong>请确保使用未经压缩的原图进行解密，否则可能导致解密失败。
+                    </div>
+                </div>
                 
                 <div class="key-input">
                     <label for="decrypt-key">解密密钥:</label>
@@ -316,7 +360,10 @@
                             <img id="decrypted-image" class="image-preview" alt="解密后的图片">
                         </div>
                     </div>
-                    <div class="mobile-download-tip">长按图片选择"保存图片"</div>
+                    <div id="decrypt-download-instruction" class="download-instruction">
+                        <span>下载说明</span>
+                        请长按上方图片选择"保存图片"进行下载
+                    </div>
                     <div class="controls">
                         <button id="download-decrypted" class="btn">下载解密图片</button>
                     </div>
@@ -551,7 +598,7 @@
                             // 存储排列顺序用于解密
                             encryptionIndices = indices;
                             
-                            resolve(new ImageData(shuffledData, imageData.width, imageData.height));
+                            resolve(new ImageData(shuffledData, imageData.width, imageData.height);
                         }
                     }
                     
@@ -672,8 +719,6 @@
                 document.getElementById('encrypt-result').style.display = 'block';
                 showStatus('encrypt-status', '加密完成!', 'success');
                 
-                // 存储加密信息到localStorage
-                localStorage.setItem('lastEncryptionKey', key);
             } catch (e) {
                 showStatus('encrypt-status', '加密失败: ' + e.message, 'error');
                 console.error('加密错误:', e);
@@ -768,27 +813,26 @@
             const imageUrl = canvas.toDataURL('image/png');
             
             if (isMobileDevice()) {
-                // 移动端处理方案
+                // 显示移动端下载说明
+                if (filename === 'encrypted.png') {
+                    document.getElementById('encrypt-download-instruction').classList.add('mobile');
+                } else {
+                    document.getElementById('decrypt-download-instruction').classList.add('mobile');
+                }
+                
+                // 尝试自动下载
                 try {
-                    // 尝试使用标准下载方式
                     const link = document.createElement('a');
                     link.download = filename;
                     link.href = imageUrl;
-                    
-                    // 创建一个一次性事件处理
                     const event = new MouseEvent('click');
                     link.dispatchEvent(event);
-                    
-                    // 显示提示让用户知道可以长按保存
-                    setTimeout(() => {
-                        const preview = showFullscreenPreview(imageUrl);
-                        alert('如果下载未自动开始，请长按图片选择"保存图片"，然后点击任意位置关闭预览');
-                    }, 500);
                 } catch (e) {
-                    // 如果标准方式失败，显示全屏预览让用户手动保存
-                    const preview = showFullscreenPreview(imageUrl);
-                    alert('请长按图片选择"保存图片"，然后点击任意位置关闭预览');
+                    console.log('自动下载失败，显示手动保存提示');
                 }
+                
+                // 显示全屏预览
+                showFullscreenPreview(imageUrl);
             } else {
                 // 桌面端使用标准下载方式
                 const link = document.createElement('a');
@@ -809,6 +853,7 @@
             document.getElementById('original-image').src = '';
             document.getElementById('encrypt-result').style.display = 'none';
             document.getElementById('encrypt-status').textContent = '';
+            document.getElementById('encrypt-download-instruction').classList.remove('mobile');
             originalImageData = null;
             encryptedImageData = null;
             document.getElementById('encrypt-input').value = '';
@@ -826,6 +871,7 @@
             document.getElementById('encrypted-image-decrypt').src = '';
             document.getElementById('decrypt-result').style.display = 'none';
             document.getElementById('decrypt-status').textContent = '';
+            document.getElementById('decrypt-download-instruction').classList.remove('mobile');
             encryptedImageForDecrypt = null;
             decryptedImageData = null;
             document.getElementById('decrypt-input').value = '';
